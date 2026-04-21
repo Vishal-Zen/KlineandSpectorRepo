@@ -789,6 +789,7 @@ define(["N/ui/serverWidget", "N/search", "N/file", 'N/query'],
                 let AccountSummary = {};
                 let trustAccountSummary = {};
                 let bankAccountSummary = {};
+                let expenseSummary = {};
                 let payeeMap = buildPayeeMap(listOfRecords);
 
                 // -----------------------------------------------------------------------
@@ -825,6 +826,23 @@ define(["N/ui/serverWidget", "N/search", "N/file", 'N/query'],
                     trustDisplay_Debit = formatCurrency(trustDisplay_Debit);
                     generalDisplay_Credit = formatCurrency(generalDisplay_Credit);
                     generalDisplay_Debit = formatCurrency(generalDisplay_Debit);
+
+                    // ---------------- Expense Summary Logic ----------------
+                    let expCat = row.expcategory || '';
+
+                    if (expCat && expCat !== '') {
+
+                        if (!expenseSummary[expCat]) {
+                            expenseSummary[expCat] = {
+                                total: 0,
+                                expText: expCat
+                            };
+                        }
+
+                        let amount = (Number(row.debit) || 0) + (Number(row.credit) || 0);
+
+                        expenseSummary[expCat].total += amount;
+                    }
 
                     //log.debug(" CSV Formated trustDisplay_Credit ", trustDisplay_Credit);
                     //log.debug(" CSV Formated trustDisplay_Debit ", trustDisplay_Debit);
@@ -991,6 +1009,23 @@ define(["N/ui/serverWidget", "N/search", "N/file", 'N/query'],
                     }
                 }
 
+                if (Object.keys(expenseSummary).length > 0) {
+                    csv.push(csvRow([]));
+                    csv.push(csvRow(['EXPENSE CATEGORY SUMMARY']));
+                    csv.push(csvRow(['Expense Category', 'Expense Summary']));
+
+                    for (let key in expenseSummary) {
+                        let entry = expenseSummary[key];
+
+                        let total = Math.abs(entry.total);
+                        let formattedTotal = formatCurrency(total);
+
+                        csv.push(csvRow([
+                            entry.expText,
+                            formattedTotal
+                        ]));
+                    }
+                }
 
 
                 let csvString = csv.join('\r\n');
