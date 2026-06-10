@@ -1,7 +1,7 @@
 /**
  * @NApiVersion 2.1
  * @NScriptType UserEventScript
- * Script Name: InvtoJE_V04
+ * Script Name: InvtoJE_V05
  * Script Record Name : ZEN | Transactions to Rev JE
  * Script ID : customscript_transaction_to_je
  * Deployed In : Invoice, Vendor Bill, Vendor Payment, Customer Payment
@@ -25,22 +25,24 @@ define(['N/record', 'N/log'], function (record, log) {
 
             var subsidiary = rec.getValue({ fieldId: 'subsidiary' });
             var totalAmount = rec.getValue({ fieldId: 'total' });
+            var debitEntity = null;
+            var creditEntity = null;
 
             var DR_ACCOUNT = null;
             var CR_ACCOUNT = null;
             var memoText = '';
 
             var headerAccount = rec.getValue({ fieldId: 'account' });
-            var headerAccountText = '';
+            //var headerAccountText = '';
 
 
-            if (
+           /* if (
                 recordType !== record.Type.INVOICE &&
                 recordType !== record.Type.VENDOR_PAYMENT &&
                 recordType !== record.Type.CUSTOMER_PAYMENT
             ) {
                 headerAccountText = rec.getText({ fieldId: 'account' });
-            }
+            } */
 
             var lineCount = recordType === record.Type.INVOICE
                 ? rec.getLineCount({ sublistId: 'expcost' })
@@ -54,7 +56,7 @@ define(['N/record', 'N/log'], function (record, log) {
 
             log.debug('Document Number', rec.getValue({ fieldId: 'tranid' }));
             log.debug('Header Account ID', headerAccount);
-            log.debug('Header Account Name', headerAccountText);
+            //log.debug('Header Account Name', headerAccountText);
 
             // Invoice Logic
             if (recordType === record.Type.INVOICE) {
@@ -68,6 +70,13 @@ define(['N/record', 'N/log'], function (record, log) {
                 CR_ACCOUNT = 833; //1751
 
                 memoText = 'Reversal JE for Customer Invoice ' + recordId;
+                debitEntity = rec.getValue({
+                    fieldId: 'entity'
+                });
+
+                creditEntity = rec.getValue({
+                    fieldId: 'entity'
+                });
 
                 log.debug('Processing', 'Customer Invoice');
             }
@@ -92,17 +101,25 @@ define(['N/record', 'N/log'], function (record, log) {
                         line: j
                     });
 
-                    var vbLineAccountText = rec.getSublistText({
+                    /* var vbLineAccountText = rec.getSublistText({
                         sublistId: sublistId,
                         fieldId: 'account',
                         line: j
-                    });
+                    }); */
 
                     log.debug('Vendor Bill Line Account ID Line ' + j, vbLineAccount);
-                    log.debug('Vendor Bill Line Account Name Line ' + j, vbLineAccountText);
+                    //log.debug('Vendor Bill Line Account Name Line ' + j, vbLineAccountText);
 
                     if (parseInt(vbLineAccount) === 644) {
+
                         hasValidLineAccount = true;
+
+                        debitEntity = rec.getSublistValue({
+                            sublistId: 'expense',
+                            fieldId: 'customer',
+                            line: j
+                        });
+
                         break;
                     }
                 }
@@ -116,6 +133,10 @@ define(['N/record', 'N/log'], function (record, log) {
                 CR_ACCOUNT = 830; //1651
 
                 memoText = 'Reversal JE for Vendor Bill ' + recordId;
+
+                creditEntity = rec.getValue({
+                    fieldId: 'entity'
+                });
 
                 log.debug('Processing', 'Vendor Bill');
             }
@@ -135,6 +156,14 @@ define(['N/record', 'N/log'], function (record, log) {
 
                 memoText = 'Reversal JE for Vendor Payment ' + recordId;
 
+                debitEntity = rec.getValue({
+                    fieldId: 'entity'
+                });
+
+                creditEntity = rec.getValue({
+                    fieldId: 'entity'
+                });
+
                 log.debug('Processing', 'Vendor Payment');
             }
 
@@ -148,6 +177,14 @@ define(['N/record', 'N/log'], function (record, log) {
                 DR_ACCOUNT = 833; //1751
                 CR_ACCOUNT = 834; //4020
                 memoText = 'Reversal JE for Customer Payment ' + recordId;
+
+                debitEntity = rec.getValue({
+                    fieldId: 'customer'
+                });
+
+                creditEntity = rec.getValue({
+                    fieldId: 'customer'
+                });
                 log.debug('Processing', 'Customer Payment');
             }
             else {
@@ -183,6 +220,16 @@ define(['N/record', 'N/log'], function (record, log) {
                 value: DR_ACCOUNT
             });
 
+            if (debitEntity) {
+
+                jeRec.setCurrentSublistValue({
+                    sublistId: 'line',
+                    fieldId: 'entity',
+                    value: debitEntity
+                });
+
+            }
+
             jeRec.setCurrentSublistValue({
                 sublistId: 'line',
                 fieldId: 'debit',
@@ -205,6 +252,16 @@ define(['N/record', 'N/log'], function (record, log) {
                 value: CR_ACCOUNT
             });
 
+            if (creditEntity) {
+
+                jeRec.setCurrentSublistValue({
+                    sublistId: 'line',
+                    fieldId: 'entity',
+                    value: creditEntity
+                });
+
+            }
+
             jeRec.setCurrentSublistValue({
                 sublistId: 'line',
                 fieldId: 'credit',
@@ -215,7 +272,24 @@ define(['N/record', 'N/log'], function (record, log) {
                 sublistId: 'line'
             });
 
+            jeRec.setValue({
+                fieldId: 'custbody_source_trans_url',
+                value: recordId
+            });
+
             var jeId = jeRec.save();
+
+            record.submitFields({
+                type: recordType,
+                id: recordId,
+                values: {
+                    custbody_rev_je_url: jeId
+                },
+                options: {
+                    enableSourcing: false,
+                    ignoreMandatoryFields: true
+                }
+            });
 
             log.debug('Reversal JE Created', jeId);
 
